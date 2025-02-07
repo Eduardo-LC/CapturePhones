@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Nome da pasta onde serão salvos os arquivos
+# Nome da pasta onde serão salvos os arquivos JSON
 FOLDER_NAME = "numPerCity"
 
 def setup_driver():
@@ -22,9 +22,8 @@ def setup_driver():
         options=chrome_options
     )
 
-    # 🔴 Limpa os logs de rede antes de começar
+    # Limpa os logs de rede antes de começar
     driver.get_log("performance")
-    
     return driver
 
 def inject_continue_button(driver):
@@ -62,13 +61,11 @@ def inject_continue_button(driver):
 def wait_for_user_click(driver):
     """Espera até que o usuário clique no botão para continuar."""
     print("🔹 Clique no botão 'Continuar' na página do PlugShare para prosseguir.")
-
     while True:
         result = driver.execute_script("return window.continueScript || false;")
         if result:
             break
         time.sleep(1)
-
     print("✅ Usuário clicou no botão. Continuando o fluxo.")
 
 def get_city_name(driver):
@@ -89,7 +86,7 @@ def extract_latest_establishments_from_logs(driver):
     latest_request_id = None
     establishments_data = None
 
-    while attempts < 10:  # 🔴 Aguarda até 10 tentativas para capturar a requisição correta
+    while attempts < 10:  # Aguarda até 10 tentativas para capturar a requisição correta
         logs = driver.get_log("performance")
         region_requests = []
 
@@ -100,12 +97,12 @@ def extract_latest_establishments_from_logs(driver):
                     url = message["params"]["response"]["url"]
                     if "locations/region" in url:
                         request_id = message["params"]["requestId"]
-                        region_requests.append((url, request_id))  # 🔴 Guarda todas as requisições válidas
+                        region_requests.append((url, request_id))
             except Exception:
                 continue
 
         if region_requests:
-            latest_request, latest_request_id = region_requests[-1]  # 🔴 Sempre captura a última
+            latest_request, latest_request_id = region_requests[-1]  # Sempre captura a última
             print(f"✅ Última requisição capturada: {latest_request}")
 
             # Aguarda um pequeno tempo para garantir que a resposta esteja disponível
@@ -133,21 +130,19 @@ def extract_phone_from_page(driver):
     print("📞 Tentando capturar o telefone...")
 
     try:
-        # 🔹 Espera o carregamento total da página antes de tentar capturar o telefone
+        # Espera o carregamento total da página antes de tentar capturar o telefone
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
-        
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.TAG_NAME, "h1"))
         )
-        
         print("✅ Página carregada com sucesso.")
         
-        # 🔹 Aguarda 2 segundos antes de capturar o telefone (garante carregamento completo)
-        time.sleep(2)
+        # Aguarda 2 segundos antes de capturar o telefone (garante carregamento completo)
+        time.sleep(3.2)
 
-        # 🔹 Espera a presença do telefone na página (até 10s)
+        # Espera a presença do telefone na página (até 10s)
         phone_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'tel:')]"))
         )
@@ -162,32 +157,51 @@ def extract_phone_from_page(driver):
     return "Telefone não encontrado"
 
 def save_partial_result(city, name, phone):
-    """Salva os resultados em arquivos separados para números encontrados e não encontrados."""
-    # 🔹 Garante que a pasta `numPerCity` existe
+    """
+    Salva os resultados em um arquivo JSON com o seguinte formato:
+    
+    {
+        "city": "Nome_da_Cidade",
+        "establishments": ["Estabelecimento 1", "Estabelecimento 2", ...],
+        "numbers": ["Telefone 1", "Telefone 2", ...]
+    }
+    
+    Se o arquivo já existir, os novos dados são acrescentados mantendo o relacionamento por índice.
+    """
+    # Garante que a pasta exista
     if not os.path.exists(FOLDER_NAME):
         os.makedirs(FOLDER_NAME)
 
-    # Define os arquivos corretos
-    if phone != "Telefone não encontrado":
-        filename = os.path.join(FOLDER_NAME, f"{city.replace(' ', '_')}.txt")  # Arquivo com números encontrados
+    filename = os.path.join(FOLDER_NAME, f"{city.replace(' ', '_')}.json")
+
+    # Carrega o arquivo existente ou cria uma nova estrutura se o arquivo não existir ou estiver corrompido
+    if os.path.exists(filename):
+        with open(filename, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except Exception:
+                data = {"city": city, "establishments": [], "numbers": []}
     else:
-        filename = os.path.join(FOLDER_NAME, f"{city.replace(' ', '_')}NoNums.txt")  # Arquivo com números não encontrados
-    
-    with open(filename, "a", encoding="utf-8") as f:
-        f.write(f"{name} - {phone}\n")
+        data = {"city": city, "establishments": [], "numbers": []}
+
+    data["establishments"].append(name)
+    data["numbers"].append(phone)
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
     
     print(f"✅ Salvo em `{filename}`: {name} - {phone}")
 
 def main():
     driver = setup_driver()
     driver.get("https://www.plugshare.com/")
-    time.sleep(3)  # 🔹 Aguarda o carregamento inicial da página
+    time.sleep(3)  # Aguarda o carregamento inicial da página
 
     try:
-        inject_continue_button(driver)  # 🔹 Adiciona o botão "Continuar" na página
-        wait_for_user_click(driver)  # 🔹 Aguarda o usuário clicar no botão "Continuar"
+        inject_continue_button(driver)  # Adiciona o botão "Continuar" na página
+        wait_for_user_click(driver)       # Aguarda o usuário clicar no botão "Continuar"
 
-        city_name = get_city_name(driver)  # 🔹 Obtém o nome da cidade digitada
+        city_name = get_city_name(driver)  # Obtém o nome da cidade digitada
         print(f"🏙️ Cidade capturada: {city_name}")
 
         establishments = extract_latest_establishments_from_logs(driver)
